@@ -1,0 +1,10 @@
+venv/
+.venv/
+__pycache__/
+*.pyc
+data/raw/
+data/interim/
+data/processed/
+*.joblib
+*.pkl
+.ipynb_checkpoints/

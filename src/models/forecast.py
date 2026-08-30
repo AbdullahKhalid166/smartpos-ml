@@ -77,10 +77,11 @@ def run_baseline(data=None, target="Units", test_fraction=0.2):
     xgb_metrics = regression_metrics(test[target], xgb_prediction)
 
     MODEL_DIR.mkdir(parents=True, exist_ok=True)
-    joblib.dump(
-        {"model": xgb, "features": features_train.columns.tolist(), "target": target},
-        MODEL_DIR / f"baseline_{target.lower()}.joblib",
-    )
+    artifact = {"model": xgb, "features": features_train.columns.tolist(), "target": target}
+    explicit_name = MODEL_DIR / f"baseline_xgb_{target.lower()}.joblib"
+    legacy_name = MODEL_DIR / f"baseline_{target.lower()}.joblib"
+    joblib.dump(artifact, explicit_name)
+    joblib.dump(artifact, legacy_name)
     return {
         "target": target,
         "test": test,
@@ -91,19 +92,23 @@ def run_baseline(data=None, target="Units", test_fraction=0.2):
     }
 
 
-def save_prediction_plot(result, target="Units"):
-    """Save actual versus baseline XGBoost predictions."""
+def save_prediction_plot(result, target="Units", model_name="baseline"):
+    """Save actual versus model predictions using a consistent filename prefix."""
     FIGURE_DIR.mkdir(parents=True, exist_ok=True)
     test = result["test"]
+    prediction = result.get("xgb_prediction", result.get("prediction"))
+    if prediction is None:
+        raise ValueError("Result must include either 'xgb_prediction' or 'prediction'.")
+
     plt.figure(figsize=(10, 5))
     plt.plot(test["Period"], test[target], label="Actual")
-    plt.plot(test["Period"], result["xgb_prediction"], label="Predicted")
-    plt.title(f"Weekly {target}: actual versus baseline prediction")
+    plt.plot(test["Period"], prediction, label="Predicted")
+    plt.title(f"Weekly {target}: actual versus {model_name} prediction")
     plt.xlabel("Week")
     plt.ylabel(target)
     plt.legend()
     plt.tight_layout()
-    output = FIGURE_DIR / f"baseline_{target.lower()}_predicted_vs_actual.png"
+    output = FIGURE_DIR / f"{model_name}_{target.lower()}_predicted_vs_actual.png"
     plt.savefig(output, dpi=150)
     plt.close()
     return output
@@ -193,10 +198,11 @@ def run_improved(data=None, target="Units", test_fraction=0.2):
     metrics = regression_metrics(test[target], predictions)
 
     MODEL_DIR.mkdir(parents=True, exist_ok=True)
-    joblib.dump(
-        {"model": model, "features": model_features, "target": target},
-        MODEL_DIR / f"improved_{target.lower()}.joblib",
-    )
+    artifact = {"model": model, "features": model_features, "target": target, "variant": "recursive_improved"}
+    explicit_name = MODEL_DIR / f"improved_recursive_xgb_{target.lower()}.joblib"
+    legacy_name = MODEL_DIR / f"improved_{target.lower()}.joblib"
+    joblib.dump(artifact, explicit_name)
+    joblib.dump(artifact, legacy_name)
     return {"target": target, "metrics": metrics, "test": test, "prediction": predictions}
 
 
@@ -253,10 +259,11 @@ def run_direct_variant(
     prediction = model.predict(test[features])
     metrics = regression_metrics(test[target], prediction)
     MODEL_DIR.mkdir(parents=True, exist_ok=True)
-    joblib.dump(
-        {"model": model, "features": features, "target": target, "method": "direct_one_step"},
-        MODEL_DIR / f"{model_name}_{target.lower()}.joblib",
-    )
+    artifact = {"model": model, "features": features, "target": target, "method": "direct_one_step", "variant": model_name}
+    explicit_name = MODEL_DIR / f"improved_direct_xgb_{target.lower()}.joblib"
+    legacy_name = MODEL_DIR / f"{model_name}_{target.lower()}.joblib"
+    joblib.dump(artifact, explicit_name)
+    joblib.dump(artifact, legacy_name)
     return {"target": target, "metrics": metrics, "test": test, "prediction": prediction, "features": features}
 
 
@@ -297,6 +304,21 @@ if __name__ == "__main__":
     baseline = run_baseline(target="Units")
     print("Linear Regression:", baseline["linear_metrics"])
     print("Baseline XGBoost:", baseline["xgb_metrics"])
-    print("Saved plot:", save_prediction_plot(baseline, "Units"))
-    improved = run_improved(target="Units")
-    print("Improved XGBoost:", improved["metrics"])
+    print("Saved baseline plot:", save_prediction_plot(baseline, "Units", model_name="baseline_xgb"))
+
+    direct_units = run_direct_variant(
+        target="Units",
+        include_extra_features=True,
+        include_price_features=True,
+        model_name="improved_direct_xgb",
+    )
+    print("Direct improved Units XGBoost:", direct_units["metrics"])
+    print("Saved direct improved Units plot:", save_prediction_plot(direct_units, "Units", model_name="improved_direct_xgb"))
+
+    direct_revenue = run_direct_variant(
+        target="Revenue",
+        rolling_windows=(2,),
+        model_name="improved_direct_xgb",
+    )
+    print("Direct improved Revenue XGBoost:", direct_revenue["metrics"])
+    print("Saved direct improved Revenue plot:", save_prediction_plot(direct_revenue, "Revenue", model_name="improved_direct_xgb"))

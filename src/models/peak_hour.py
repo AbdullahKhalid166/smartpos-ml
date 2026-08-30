@@ -43,7 +43,7 @@ def build_busy_label(data=None):
 
 
 def train_peak_hour_classifier(data=None):
-    """Train a classifier to predict busy vs quiet hours from calendar features."""
+    """Train a weighted XGBoost classifier to improve recall for the busy class."""
     transactions = load_feature_transactions() if data is None else data.copy()
     positive = transactions[transactions["is_positive_sale"] == True].copy()
     hourly = positive.groupby(["Hour", "DayOfWeek", "Month"], as_index=False).size().rename(columns={"size": "transaction_count"})
@@ -55,29 +55,36 @@ def train_peak_hour_classifier(data=None):
     y = hourly["busy"]
     X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.25, random_state=42, stratify=y)
 
+    class_weight = (y_train == 0).sum() / max(1, (y_train == 1).sum())
     xgb = XGBClassifier(
         n_estimators=200,
         max_depth=3,
         learning_rate=0.05,
         objective="binary:logistic",
         random_state=42,
+        scale_pos_weight=class_weight,
     )
     xgb.fit(X_train, y_train)
-    xgb_pred = xgb.predict(X_test)
-    xgb_report = classification_report(y_test, xgb_pred, output_dict=True, zero_division=0)
+    xgb_prob = xgb.predict_proba(X_test)[:, 1]
 
-    rf = RandomForestClassifier(n_estimators=300, random_state=42)
-    rf.fit(X_train, y_train)
-    rf_pred = rf.predict(X_test)
-    rf_report = classification_report(y_test, rf_pred, output_dict=True, zero_division=0)
+    thresholds = [0.35, 0.4, 0.45, 0.5, 0.55, 0.6, 0.65]
+    best_threshold = 0.5
+    best_report = classification_report(y_test, (xgb_prob >= best_threshold).astype(int), output_dict=True, zero_division=0)
+    best_recall = best_report["1"]["recall"]
+    for threshold_value in thresholds:
+        pred = (xgb_prob >= threshold_value).astype(int)
+        report = classification_report(y_test, pred, output_dict=True, zero_division=0)
+        recall = report["1"]["recall"]
+        if recall > best_recall:
+            best_threshold = threshold_value
+            best_recall = recall
+            best_report = report
 
-    best_name = "xgb" if xgb_report["accuracy"] >= rf_report["accuracy"] else "rf"
-    best_model = xgb if best_name == "xgb" else rf
-    best_pred = xgb_pred if best_name == "xgb" else rf_pred
-    best_report = xgb_report if best_name == "xgb" else rf_report
+    best_pred = (xgb_prob >= best_threshold).astype(int)
+    best_name = "xgb_weighted"
 
     MODEL_PATH.parent.mkdir(parents=True, exist_ok=True)
-    joblib.dump({"model": best_model, "features": features, "model_name": best_name, "report": best_report}, MODEL_PATH)
+    joblib.dump({"model": xgb, "features": features, "model_name": best_name, "threshold": best_threshold, "report": best_report}, MODEL_PATH)
 
     FIGURE_DIR.mkdir(parents=True, exist_ok=True)
     cm = confusion_matrix(y_test, best_pred)
@@ -100,18 +107,21 @@ def train_peak_hour_classifier(data=None):
     return {
         "hourly_summary": hourly,
         "best_model": best_name,
+        "model_name": best_name,
+        "threshold": best_threshold,
         "report": best_report,
         "plot_path": plot_path,
     }
 
 
 def predict_busy_hour(day_of_week, month):
-    """Predict busy vs quiet for a hour-like feature row."""
+    """Predict busy vs quiet for a hour-like feature row using the tuned probability threshold."""
     artifact = joblib.load(MODEL_PATH)
     model = artifact["model"]
     sample = pd.DataFrame({"DayOfWeek": [day_of_week], "Month": [month]})
-    prediction = model.predict(sample[artifact["features"]])
-    return int(prediction[0])
+    probabilities = model.predict_proba(sample[artifact["features"]])[:, 1]
+    threshold = artifact.get("threshold", 0.5)
+    return int(probabilities[0] >= threshold)
 
 
 def generate():

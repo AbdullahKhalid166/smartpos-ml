@@ -10,6 +10,7 @@ import numpy as np
 import pandas as pd
 from sklearn.linear_model import LinearRegression
 from sklearn.metrics import mean_absolute_error, mean_squared_error
+from sklearn.model_selection import GridSearchCV
 from xgboost import XGBRegressor
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -53,7 +54,7 @@ def chronological_split(data, test_fraction=0.2):
 
 
 def train_profit_model(data=None, target="EstimatedProfit", test_fraction=0.2):
-    """Train baseline profit models and save the best one."""
+    """Train profit models and keep the best tuned XGBoost variant when it improves hold-out performance."""
     weekly = _aggregate_weekly(load_profit_data() if data is None else data.copy(), target)
     train, test = chronological_split(weekly, test_fraction)
 
@@ -64,24 +65,40 @@ def train_profit_model(data=None, target="EstimatedProfit", test_fraction=0.2):
     linear_pred = linear.predict(test_features)
     linear_metrics = regression_metrics(test[target], linear_pred)
 
+    param_grid = {
+        "n_estimators": [200, 250, 400],
+        "max_depth": [3, 4, 5],
+        "learning_rate": [0.03, 0.05],
+    }
+    xgb_search = GridSearchCV(
+        XGBRegressor(
+            objective="reg:squarederror",
+            random_state=42,
+            n_jobs=2,
+        ),
+        param_grid=param_grid,
+        scoring="neg_root_mean_squared_error",
+        cv=3,
+        n_jobs=1,
+    )
+    xgb_search.fit(train_features, train[target])
+    best_params = xgb_search.best_params_
     xgb = XGBRegressor(
-        n_estimators=250,
-        max_depth=4,
-        learning_rate=0.05,
         objective="reg:squarederror",
         random_state=42,
         n_jobs=2,
+        **best_params,
     )
     xgb.fit(train_features, train[target])
     xgb_pred = xgb.predict(test_features)
     xgb_metrics = regression_metrics(test[target], xgb_pred)
 
-    best = {"name": "xgb", "model": xgb, "metrics": xgb_metrics, "prediction": xgb_pred}
+    best = {"name": "xgb", "model": xgb, "metrics": xgb_metrics, "prediction": xgb_pred, "params": best_params}
     if linear_metrics["RMSE"] < xgb_metrics["RMSE"]:
-        best = {"name": "linear", "model": linear, "metrics": linear_metrics, "prediction": linear_pred}
+        best = {"name": "linear", "model": linear, "metrics": linear_metrics, "prediction": linear_pred, "params": None}
 
     MODEL_PATH.parent.mkdir(parents=True, exist_ok=True)
-    joblib.dump({"model": best["model"], "metrics": best["metrics"], "target": target, "model_name": best["name"]}, MODEL_PATH)
+    joblib.dump({"model": best["model"], "metrics": best["metrics"], "target": target, "model_name": best["name"], "params": best["params"]}, MODEL_PATH)
 
     FIGURE_DIR.mkdir(parents=True, exist_ok=True)
     plt.figure(figsize=(10, 5))

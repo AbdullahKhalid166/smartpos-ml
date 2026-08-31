@@ -12,12 +12,22 @@ from .profit_forecast import train_profit_model
 from .peak_hour import train_peak_hour_classifier
 
 ROOT = Path(__file__).resolve().parents[2]
+MODEL_PATH = ROOT / "models" / "insights_summary.joblib"
 
 
 def _segment_summary():
     segmentation = fit_customer_segmentation()
     summary = segmentation["data"].groupby("segment")["Customer ID"].count().reset_index()
     return summary.rename(columns={"Customer ID": "customer_count"})
+
+
+def save_insights_summary(payload):
+    """Persist the generated insight payload for the Streamlit dashboard."""
+    MODEL_PATH.parent.mkdir(parents=True, exist_ok=True)
+    import joblib
+
+    joblib.dump(payload, MODEL_PATH)
+    return payload
 
 
 def generate_insights():
@@ -49,7 +59,8 @@ def generate_insights():
         "peak_hour_volume": int(peak_hour["transaction_count"]),
     }
 
-    return {"insights": insights, "surprise": surprise}
+    payload = {"insights": insights, "surprise": surprise}
+    return save_insights_summary(payload)
 
 
 def generate():

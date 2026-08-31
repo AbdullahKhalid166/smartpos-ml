@@ -6,6 +6,8 @@ import joblib
 import pandas as pd
 import streamlit as st
 
+from src.models.insights import generate_insights
+
 ROOT = Path(__file__).resolve().parents[2]
 DATA_DIR = ROOT / "data" / "processed"
 MODELS_DIR = ROOT / "models"
@@ -43,9 +45,11 @@ def load_forecast_artifact():
 
 @st.cache_data
 def load_insights_summary():
-    if (ROOT / "models" / "insights_summary.joblib").exists():
-        return joblib.load(ROOT / "models" / "insights_summary.joblib")
-    return {"insights": ["No insights file found."], "surprise": {}}
+    artifact_path = ROOT / "models" / "insights_summary.joblib"
+    if not artifact_path.exists():
+        payload = generate_insights()
+        return payload
+    return joblib.load(artifact_path)
 
 
 @st.cache_data

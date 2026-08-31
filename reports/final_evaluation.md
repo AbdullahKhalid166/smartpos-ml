@@ -9,8 +9,9 @@
 | profit_forecast | RMSE | 10756.621423 |
 | profit_forecast | MAE | 8620.823778 |
 | segmentation | silhouette | 0.442038 |
-| peak_hour | precision_busy | 0.409396 |
-| peak_hour | recall_busy | 0.897059 |
+| peak_hour | accuracy | 0.804000 |
+| peak_hour | precision_busy | 0.688300 |
+| peak_hour | recall_busy | 0.779400 |
 | recommendations | top_lift | 48.061966 |
 | recommendations | top_confidence | 0.816547 |
 
@@ -18,5 +19,5 @@
 - Forecasting: baseline XGBoost remains the default production forecast because it outperforms the recursive improved variant on the test split.
 - Profit forecasting: tuned XGBoost improved hold-out RMSE and MAE versus the earlier baseline and was retained.
 - Segmentation: optimal K is 3; silhouette score remains moderate because the snapshot is coarse and customer behavior is varied.
-- Peak-hour detection: the weighted XGBoost model with threshold tuning materially improved recall for the busy class.
+- Peak-hour detection: the improved weighted XGBoost model with cyclical hour features and threshold tuning increased busy-hour recall from 0.3235 to 0.7794 while improving precision to 0.6883.
 - Recommendations: top associations remain strong for common items, but coverage is weak for rare products and should be treated as opportunistic rather than universal.

@@ -49,17 +49,19 @@ The evaluation plot is saved to `reports/figures/profit_forecast_predicted_vs_ac
 
 Transaction-level positive sales were aggregated by `Hour`, `DayOfWeek`, and `Month` to measure transaction intensity. Busiest hours were defined as the top-tercile by transaction volume and labeled as `busy`.
 
-The classifier used `DayOfWeek` and `Month` as features. A binary classifier was trained and evaluated with a held-out test split.
+The final classifier used the hour signal directly, plus cyclical hour encoding (`hour_sin`, `hour_cos`), weekend context, and a weighted XGBoost setup with threshold tuning. This improved the busy-class detection substantially compared with the earlier baseline version, which had only `DayOfWeek` and `Month` features and a busy recall of `0.3235`.
 
 | Metric | Value |
 |---|---:|
-| Accuracy | 0.7085 |
-| Precision (class 0) | 0.7212 |
-| Recall (class 0) | 0.9084 |
-| Precision (class 1) | 0.6471 |
-| Recall (class 1) | 0.3235 |
+| Accuracy | 0.8040 |
+| Precision (class 0) | 0.8494 |
+| Recall (class 0) | 0.8408 |
+| Precision (class 1) | 0.6883 |
+| Recall (class 1) | 0.7794 |
 
 The peak-hour model is saved to `models/peak_hour_model.joblib`, and the confusion matrix chart is saved to `reports/figures/peak_hour_confusion_matrix.png`.
+
+This update represents a clear improvement in busy-hour detection: the recall for the busy class increased from `0.3235` to `0.7794`, while precision also improved from `0.6471` to `0.6883` in the final model.
 
 ## 5. Sales Insights
 

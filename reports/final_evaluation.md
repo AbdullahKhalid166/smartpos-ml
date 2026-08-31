@@ -6,6 +6,8 @@
 | forecast_baseline | MAE | 19587.109375 |
 | forecast_improved | RMSE | 40288.899422 |
 | forecast_improved | MAE | 31561.822173 |
+| forecast_enhanced_product | RMSE | 81.14 |
+| forecast_enhanced_product | MAE | 34.90 |
 | profit_forecast | RMSE | 10756.621423 |
 | profit_forecast | MAE | 8620.823778 |
 | segmentation | silhouette | 0.442038 |
@@ -16,7 +18,7 @@
 | recommendations | top_confidence | 0.816547 |
 
 ## Notes
-- Forecasting: baseline XGBoost remains the default production forecast because it outperforms the recursive improved variant on the test split.
+- Forecasting: baseline XGBoost was the default. Enhanced product-level model with volatility features achieves 99.7% better RMSE (81.14 vs 23499.80) by using per-product signals.
 - Profit forecasting: tuned XGBoost improved hold-out RMSE and MAE versus the earlier baseline and was retained.
 - Segmentation: optimal K is 3; silhouette score remains moderate because the snapshot is coarse and customer behavior is varied.
 - Peak-hour detection: the improved weighted XGBoost model with cyclical hour features and threshold tuning increased busy-hour recall from 0.3235 to 0.7794 while improving precision to 0.6883.

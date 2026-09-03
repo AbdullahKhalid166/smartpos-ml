@@ -40,7 +40,7 @@ def load_profit_artifact():
 
 @st.cache_data
 def load_forecast_artifact():
-    return joblib.load(MODELS_DIR / "baseline_xgb_units.joblib")
+    return joblib.load(MODELS_DIR / "baseline_units_v1.joblib")
 
 
 @st.cache_data

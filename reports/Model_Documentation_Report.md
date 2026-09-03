@@ -45,7 +45,3 @@ Association rules were mined with Apriori and ranked by lift and confidence. The
 3. Use stockout alerts as prioritization inputs requiring inventory validation.
 4. Use the weighted busy-hour model for staffing planning, with manual review when operational urgency is high.
 5. Limit recommendations to common products and add a coverage check before suggesting low-frequency SKUs.
-
-to run:
-cd /d "C:\Users\HS TRADER\OneDrive\Documents\OneDrive\Desktop\smartpos-ml"
-.\.venv\Scripts\python.exe -m streamlit run src/app/demo_app.py --server.headless true --server.port 8501

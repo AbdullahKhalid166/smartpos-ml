@@ -23,3 +23,7 @@
 - Segmentation: optimal K is 3; silhouette score remains moderate because the snapshot is coarse and customer behavior is varied.
 - Peak-hour detection: the improved weighted XGBoost model with cyclical hour features and threshold tuning increased busy-hour recall from 0.3235 to 0.7794 while improving precision to 0.6883.
 - Recommendations: top associations remain strong for common items, but coverage is weak for rare products and should be treated as opportunistic rather than universal.
+
+to run locally:
+cd /d "C:\Users\HS TRADER\OneDrive\Documents\OneDrive\Desktop\smartpos-ml"
+.\.venv\Scripts\python.exe -m streamlit run src/app/demo_app.py --server.headless true --server.port 8501

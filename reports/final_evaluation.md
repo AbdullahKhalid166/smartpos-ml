@@ -11,9 +11,9 @@
 | profit_forecast | RMSE | 10756.621423 |
 | profit_forecast | MAE | 8620.823778 |
 | segmentation | silhouette | 0.442038 |
-| peak_hour | accuracy | 0.804000 |
-| peak_hour | precision_busy | 0.688300 |
-| peak_hour | recall_busy | 0.779400 |
+| peak_hour | accuracy | 0.629887 |
+| peak_hour | precision_busy | 0.558621 |
+| peak_hour | recall_busy | 0.949153 |
 | recommendations | top_lift | 48.061966 |
 | recommendations | top_confidence | 0.816547 |
 
@@ -21,7 +21,7 @@
 - Forecasting: baseline XGBoost was the default. The enhanced product-level model (RMSE 81.14, MAE 34.90) operates at per-product-period grain and is not directly comparable to the global weekly forecast (RMSE 23,499.80); it specifically addresses the sparse-product over-prediction issue found in edge case testing.
 - Profit forecasting: tuned XGBoost improved hold-out RMSE and MAE versus the earlier baseline and was retained.
 - Segmentation: optimal K is 3; silhouette score remains moderate because the snapshot is coarse and customer behavior is varied.
-- Peak-hour detection: the improved weighted XGBoost model with cyclical hour features and threshold tuning increased busy-hour recall from 0.3235 to 0.7794 while improving precision to 0.6883.
+- Peak-hour detection: chronological train/validation/test evaluation produced accuracy 0.6299, busy precision 0.5586, and busy recall 0.9492. The earlier random-split result (accuracy 0.8040, precision 0.6883, recall 0.7794) was optimistic and is retained only as a historical comparison.
 - Recommendations: top associations remain strong for common items, but coverage is weak for rare products and should be treated as opportunistic rather than universal.
 
 to run locally:

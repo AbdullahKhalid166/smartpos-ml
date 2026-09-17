@@ -27,7 +27,7 @@ KMeans from `k=3` to `k=6` selected `k=3` as the best solution with silhouette s
 The stockout module computes recent daily demand against a 75th-percentile threshold. This is a demand-pressure signal rather than a verified inventory stockout because no stock-on-hand, lead-time, or replenishment data is present.
 
 ### Peak-hour detection
-The original busy-hour recall was 0.3235. The improved model adds the hour signal, cyclical hour encoding, weekend context, and threshold tuning. The latest weighted XGBoost setup achieved accuracy 0.8040, busy precision 0.6883, and busy recall 0.7794. This materially improves rush-hour coverage while keeping the precision acceptable for staffing-oriented decisions.
+The model now uses chronological train/validation/test splits. The busy threshold is derived from training data, and the probability threshold is selected on validation data only. The untouched test period achieved accuracy 0.6299, busy precision 0.5586, and busy recall 0.9492. The earlier random-split result (accuracy 0.8040, busy precision 0.6883, and busy recall 0.7794) was optimistic and is retained only as a historical comparison.
 
 ### Recommendations
 Association rules were mined with Apriori and ranked by lift and confidence. The strongest rules have lift values around 48, but the coverage for rare items remains poor because the method favors frequent co-purchase patterns.

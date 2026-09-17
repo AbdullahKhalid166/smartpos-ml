@@ -9,11 +9,26 @@ import numpy as np
 import pandas as pd
 from sklearn.cluster import KMeans
 from sklearn.metrics import silhouette_score
+from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import StandardScaler
 
 ROOT = Path(__file__).resolve().parents[2]
 DATA_PATH = ROOT / "data" / "processed" / "customer_rfm_asof.csv"
 MODEL_PATH = ROOT / "models" / "customer_segmentation.joblib"
+
+
+class MonetaryLogTransformer:
+    """Apply the training-time Monetary transform consistently at prediction."""
+
+    def fit(self, features, y=None):
+        self.log_monetary = features["Monetary"].skew() > 1
+        return self
+
+    def transform(self, features):
+        transformed = features.copy()
+        if self.log_monetary:
+            transformed["Monetary"] = np.log1p(transformed["Monetary"])
+        return transformed
 
 
 def load_latest_customer_snapshot(path=DATA_PATH):
@@ -25,14 +40,14 @@ def load_latest_customer_snapshot(path=DATA_PATH):
 
 
 def _prepare_features(frame):
-    """Prepare scaled RFM features with a log-transform on Monetary if needed."""
+    """Fit the RFM preprocessing pipeline and return transformed features."""
     features = frame[["Recency", "Frequency", "Monetary"]].copy()
-    monetary_skew = features["Monetary"].skew()
-    if pd.notna(monetary_skew) and monetary_skew > 1:
-        features["Monetary"] = np.log1p(features["Monetary"])
-    scaler = StandardScaler()
-    scaled = scaler.fit_transform(features)
-    return scaled, scaler, features.columns.tolist()
+    pipeline = Pipeline([
+        ("monetary_log", MonetaryLogTransformer()),
+        ("scaler", StandardScaler()),
+    ])
+    scaled = pipeline.fit_transform(features)
+    return scaled, pipeline, features.columns.tolist()
 
 
 def _label_clusters(cluster_summary):
@@ -58,10 +73,10 @@ def _label_clusters(cluster_summary):
 
 
 def fit_customer_segmentation(data=None):
-    """Fit a KMeans solution and save the model and scaler to disk."""
+    """Fit a KMeans solution and save the model and preprocessing pipeline."""
     snapshot = load_latest_customer_snapshot() if data is None else data.copy()
     snapshot = snapshot.sort_values("Customer ID").reset_index(drop=True)
-    features, scaler, feature_names = _prepare_features(snapshot)
+    features, preprocessing, feature_names = _prepare_features(snapshot)
 
     best_k = None
     best_score = -1
@@ -84,7 +99,7 @@ def fit_customer_segmentation(data=None):
 
     payload = {
         "model": best_model,
-        "scaler": scaler,
+        "preprocessing": preprocessing,
         "feature_names": feature_names,
         "best_k": best_k,
         "silhouette_score": float(best_score),
@@ -93,14 +108,18 @@ def fit_customer_segmentation(data=None):
     }
     MODEL_PATH.parent.mkdir(parents=True, exist_ok=True)
     joblib.dump(payload, MODEL_PATH)
-    joblib.dump({"model": best_model, "scaler": scaler, "segment_labels": label_map, "best_k": best_k}, MODEL_PATH.with_name("customer_segmentation_model.joblib"))
+    joblib.dump({"model": best_model, "preprocessing": preprocessing, "segment_labels": label_map, "best_k": best_k}, MODEL_PATH.with_name("customer_segmentation_model.joblib"))
     return payload
 
 
 def predict_segments(new_data, artifact=None):
     """Predict segment labels for a customer dataframe using the saved model."""
     artifact = joblib.load(MODEL_PATH) if artifact is None else artifact
-    scaled = artifact["scaler"].transform(new_data[["Recency", "Frequency", "Monetary"]].copy())
+    features = new_data[["Recency", "Frequency", "Monetary"]].copy()
+    preprocessing = artifact.get("preprocessing")
+    if preprocessing is None:
+        raise KeyError("Segmentation artifact is missing the fitted preprocessing pipeline")
+    scaled = preprocessing.transform(features)
     labels = artifact["model"].predict(scaled)
     segment_ids = pd.Series(labels, index=new_data.index)
     segment_names = segment_ids.map(artifact["segment_labels"])

@@ -10,7 +10,6 @@ import numpy as np
 import pandas as pd
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.metrics import classification_report, confusion_matrix
-from sklearn.model_selection import train_test_split
 from xgboost import XGBClassifier
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -47,13 +46,12 @@ def _prepare_hourly_dataset(data=None):
     """Aggregate positive sales by hour and engineer cyclical features for a better busy-hour signal."""
     transactions = load_feature_transactions() if data is None else data.copy()
     positive = transactions[transactions["is_positive_sale"] == True].copy()
-    hourly = positive.groupby(["Hour", "DayOfWeek", "Month"], as_index=False).size().rename(columns={"size": "transaction_count"})
+    positive["Date"] = pd.to_datetime(positive["Date"])
+    hourly = positive.groupby(["Date", "Hour", "DayOfWeek", "Month"], as_index=False).size().rename(columns={"size": "transaction_count"})
     hourly["is_weekend"] = hourly["DayOfWeek"].isin([6, 7]).astype(int)
     hourly["hour_sin"] = np.sin(2 * np.pi * hourly["Hour"] / 24)
     hourly["hour_cos"] = np.cos(2 * np.pi * hourly["Hour"] / 24)
-    threshold = hourly["transaction_count"].quantile(0.66)
-    hourly["busy"] = (hourly["transaction_count"] >= threshold).astype(int)
-    return hourly
+    return hourly.sort_values(["Date", "Hour"]).reset_index(drop=True)
 
 
 def _save_peak_hour_report(best_report, best_threshold, model_name, feature_names):
@@ -81,38 +79,50 @@ def _save_peak_hour_report(best_report, best_threshold, model_name, feature_name
 
 
 def train_peak_hour_classifier(data=None):
-    """Train a stronger hourly XGBoost classifier with cyclic features and threshold tuning."""
+    """Train an hourly classifier with chronological splits and validation-only tuning."""
     hourly = _prepare_hourly_dataset(data)
     features = ["Hour", "DayOfWeek", "Month", "is_weekend", "hour_sin", "hour_cos"]
-    X = hourly[features]
-    y = hourly["busy"]
-    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.25, random_state=42, stratify=y)
+    split_train = max(1, int(len(hourly) * 0.6))
+    split_validation = max(split_train + 1, int(len(hourly) * 0.8))
+    train = hourly.iloc[:split_train].copy()
+    validation = hourly.iloc[split_train:split_validation].copy()
+    test = hourly.iloc[split_validation:].copy()
+    busy_threshold = train["transaction_count"].quantile(0.66)
+    hourly["busy"] = (hourly["transaction_count"] >= busy_threshold).astype(int)
+    train["busy"] = (train["transaction_count"] >= busy_threshold).astype(int)
+    validation["busy"] = (validation["transaction_count"] >= busy_threshold).astype(int)
+    test["busy"] = (test["transaction_count"] >= busy_threshold).astype(int)
 
-    class_weight = (y_train == 0).sum() / max(1, (y_train == 1).sum())
-    xgb = XGBClassifier(
-        n_estimators=400,
-        max_depth=4,
-        learning_rate=0.05,
-        subsample=0.9,
-        colsample_bytree=0.9,
-        objective="binary:logistic",
-        random_state=42,
-        scale_pos_weight=class_weight,
-        eval_metric="logloss",
-    )
-    xgb.fit(X_train, y_train)
-    xgb_prob = xgb.predict_proba(X_test)[:, 1]
+    def fit_model(frame):
+        labels = frame["busy"]
+        class_weight = (labels == 0).sum() / max(1, (labels == 1).sum())
+        model = XGBClassifier(
+            n_estimators=400,
+            max_depth=4,
+            learning_rate=0.05,
+            subsample=0.9,
+            colsample_bytree=0.9,
+            objective="binary:logistic",
+            random_state=42,
+            scale_pos_weight=class_weight,
+            eval_metric="logloss",
+        )
+        model.fit(frame[features], labels)
+        return model
+
+    validation_model = fit_model(train)
+    validation_prob = validation_model.predict_proba(validation[features])[:, 1]
 
     thresholds = np.linspace(0.25, 0.75, 21)
     best_threshold = 0.5
-    best_report = classification_report(y_test, (xgb_prob >= best_threshold).astype(int), output_dict=True, zero_division=0)
+    best_report = classification_report(validation["busy"], (validation_prob >= best_threshold).astype(int), output_dict=True, zero_division=0)
     best_f1 = best_report["1"]["f1-score"]
     best_precision = best_report["1"]["precision"]
     best_recall = best_report["1"]["recall"]
 
     for threshold_value in thresholds:
-        pred = (xgb_prob >= threshold_value).astype(int)
-        report = classification_report(y_test, pred, output_dict=True, zero_division=0)
+        pred = (validation_prob >= threshold_value).astype(int)
+        report = classification_report(validation["busy"], pred, output_dict=True, zero_division=0)
         candidate_f1 = report["1"]["f1-score"]
         candidate_precision = report["1"]["precision"]
         candidate_recall = report["1"]["recall"]
@@ -123,7 +133,11 @@ def train_peak_hour_classifier(data=None):
             best_precision = candidate_precision
             best_recall = candidate_recall
 
-    best_pred = (xgb_prob >= best_threshold).astype(int)
+    train_validation = pd.concat([train, validation], ignore_index=True)
+    xgb = fit_model(train_validation)
+    test_prob = xgb.predict_proba(test[features])[:, 1]
+    best_pred = (test_prob >= best_threshold).astype(int)
+    test_report = classification_report(test["busy"], best_pred, output_dict=True, zero_division=0)
     best_name = "xgb_weighted"
 
     MODEL_PATH.parent.mkdir(parents=True, exist_ok=True)
@@ -132,12 +146,18 @@ def train_peak_hour_classifier(data=None):
         "features": features,
         "model_name": best_name,
         "threshold": best_threshold,
-        "report": best_report,
+        "report": test_report,
+        "validation_report": best_report,
+        "busy_threshold": float(busy_threshold),
+        "split_dates": {
+            "train_end": train["Date"].max().date().isoformat(),
+            "validation_end": validation["Date"].max().date().isoformat(),
+        },
     }
     joblib.dump(artifact, MODEL_PATH)
 
     FIGURE_DIR.mkdir(parents=True, exist_ok=True)
-    cm = confusion_matrix(y_test, best_pred)
+    cm = confusion_matrix(test["busy"], best_pred)
     plt.figure(figsize=(6, 5))
     plt.imshow(cm, cmap="Blues")
     plt.title("Busy vs Quiet Hour Confusion Matrix")
@@ -154,7 +174,7 @@ def train_peak_hour_classifier(data=None):
     plt.savefig(plot_path, dpi=150)
     plt.close()
 
-    _save_peak_hour_report(best_report, best_threshold, best_name, features)
+    _save_peak_hour_report(test_report, best_threshold, best_name, features)
 
     return {
         "hourly_summary": hourly,
@@ -162,7 +182,8 @@ def train_peak_hour_classifier(data=None):
         "model_name": best_name,
         "features": features,
         "threshold": best_threshold,
-        "report": best_report,
+        "report": test_report,
+        "validation_report": best_report,
         "plot_path": plot_path,
         "report_path": REPORT_PATH,
     }

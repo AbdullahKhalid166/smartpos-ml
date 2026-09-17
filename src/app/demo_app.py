@@ -69,7 +69,7 @@ def segment_for_customer(customer_id: int, customer_snapshot: pd.DataFrame, arti
     features = row[["Recency", "Frequency", "Monetary"]].copy()
     if "Monetary" in features.columns and features["Monetary"].skew() > 1:
         features["Monetary"] = features["Monetary"].apply(lambda x: x if pd.isna(x) else x)
-    scaled = artifact["scaler"].transform(features)
+    scaled = artifact["preprocessing"].transform(features)
     label = artifact["model"].predict(scaled)[0]
     return artifact["segment_labels"].get(int(label), "Regular")
 

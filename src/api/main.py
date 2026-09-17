@@ -81,10 +81,11 @@ def predict_forecast(request: ForecastRequest):
 def predict_profit(request: ProfitRequest):
 	if request.end_date < request.start_date:
 		raise HTTPException(status_code=422, detail="end_date must be on or after start_date")
-	periods = pd.date_range(request.start_date, request.end_date, freq="W-MON")
+	periods = pd.DataFrame({
+		"Period": pd.date_range(request.start_date, request.end_date, freq="W-MON"),
+	})
 	if periods.empty:
-		periods = pd.DatetimeIndex([pd.Timestamp(request.start_date)])
-	periods = pd.DataFrame({"Period": periods})
+		periods = pd.DataFrame({"Period": [pd.Timestamp(request.start_date)]})
 	result = profit_forecast.predict_profit(periods, artifact=app.state.artifacts["profit"])
 	return _response({"periods": periods["Period"].dt.date.astype(str).tolist(), "profit": [float(value) for value in result]}, "profit", "Weekly profit forecast.")
 

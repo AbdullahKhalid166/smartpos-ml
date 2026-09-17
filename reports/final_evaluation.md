@@ -27,3 +27,6 @@
 to run locally:
 cd /d "C:\Users\HS TRADER\OneDrive\Documents\OneDrive\Desktop\smartpos-ml"
 .\.venv\Scripts\python.exe -m streamlit run src/app/demo_app.py --server.headless true --server.port 8501
+
+tu run api:
+.venv\Scripts\uvicorn.exe src.api.main:app --reload

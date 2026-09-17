@@ -63,8 +63,10 @@ def generate_insights():
     return save_insights_summary(payload)
 
 
-def generate():
+def generate(artifact=None):
     """Compatibility wrapper for API-style use."""
+    if artifact is not None:
+        return artifact
     return generate_insights()
 
 

@@ -97,14 +97,26 @@ def fit_customer_segmentation(data=None):
     return payload
 
 
-def predict_segments(new_data):
+def predict_segments(new_data, artifact=None):
     """Predict segment labels for a customer dataframe using the saved model."""
-    artifact = joblib.load(MODEL_PATH)
+    artifact = joblib.load(MODEL_PATH) if artifact is None else artifact
     scaled = artifact["scaler"].transform(new_data[["Recency", "Frequency", "Monetary"]].copy())
     labels = artifact["model"].predict(scaled)
     segment_ids = pd.Series(labels, index=new_data.index)
     segment_names = segment_ids.map(artifact["segment_labels"])
     return segment_names.rename("segment")
+
+
+def predict_customer_segment(customer_id, artifact=None):
+    """Predict one customer's segment from the saved RFM snapshot."""
+    artifact = joblib.load(MODEL_PATH) if artifact is None else artifact
+    customers = artifact.get("data")
+    if customers is None:
+        customers = load_latest_customer_snapshot()
+    customer = customers[customers["Customer ID"].astype(str) == str(customer_id)]
+    if customer.empty:
+        raise KeyError(customer_id)
+    return str(predict_segments(customer, artifact=artifact).iloc[0])
 
 
 def generate():

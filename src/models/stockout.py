@@ -79,8 +79,10 @@ def build_low_stock_alerts(data=None, recent_days=28, risk_quantile=0.75):
     return alerts
 
 
-def generate():
+def generate(artifact=None):
     """Return a clean alert dataset in API-ready form."""
+    if artifact is not None:
+        return artifact["alerts"]
     return build_low_stock_alerts()
 
 

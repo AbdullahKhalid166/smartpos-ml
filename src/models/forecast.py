@@ -267,6 +267,85 @@ def run_direct_variant(
     return {"target": target, "metrics": metrics, "test": test, "prediction": prediction, "features": features}
 
 
+def _predict_enhanced_product_forecast(stock_code, periods, artifact, data):
+    """Build product-specific lag features and forecast recursively."""
+    frame = data.sort_values(["Period", "StockCode"]).copy()
+    frame["AveragePrice"] = frame["AveragePrice"].fillna(
+        frame.groupby("StockCode")["AveragePrice"].transform("mean")
+    )
+    frame["AveragePrice"] = frame["AveragePrice"].fillna(frame["AveragePrice"].mean())
+    frame["product_id"] = pd.factorize(frame["StockCode"])[0]
+
+    product = frame[frame["StockCode"].astype(str) == str(stock_code)].sort_values("Period").copy()
+    if product.empty:
+        raise KeyError(stock_code)
+
+    product_id = int(product["product_id"].iloc[0])
+    average_price = float(product["AveragePrice"].mean())
+    demand_volatility = float(product["Units"].rolling(4).std().iloc[-1])
+    price_volatility = float(product["AveragePrice"].rolling(4).std().iloc[-1])
+    demand_volatility = 0.0 if np.isnan(demand_volatility) else demand_volatility
+    price_volatility = 0.0 if np.isnan(price_volatility) else price_volatility
+
+    history = product["Units"].astype(float).tolist()
+    predictions = []
+    for period in periods:
+        feature_row = pd.DataFrame([{
+            "product_id": product_id,
+            "year": period.year,
+            "month": period.month,
+            "week": int(period.isocalendar().week),
+            "day_of_week": period.dayofweek,
+            "lag_1": history[-1],
+            "lag_2": history[-2] if len(history) > 1 else history[-1],
+            "rolling_4": float(np.mean(history[-4:])),
+            "product_demand_volatility": demand_volatility,
+            "product_price_volatility": price_volatility,
+            "product_avg_price": average_price,
+        }])
+        prediction = max(0.0, float(artifact["model"].predict(feature_row[artifact["features"]])[0]))
+        predictions.append(prediction)
+        history.append(prediction)
+
+    return {
+        "StockCode": str(stock_code),
+        "periods": [period.date().isoformat() for period in periods],
+        "units": predictions,
+        "revenue": [prediction * average_price for prediction in predictions],
+    }
+
+
+def predict_forecast(stock_code, start_date, end_date, models=None, data=None):
+    """Predict product-specific units and revenue using the enhanced model."""
+    periods = pd.date_range(start=start_date, end=end_date, freq="W-MON")
+    if periods.empty:
+        periods = pd.DatetimeIndex([pd.Timestamp(start_date)])
+
+    loaded = models or {}
+    enhanced = loaded.get("enhanced_product")
+    if enhanced is not None:
+        return _predict_enhanced_product_forecast(stock_code, periods, enhanced, data)
+
+    predictions = {}
+    for target in ("Units", "Revenue"):
+        artifact = loaded.get(target)
+        if artifact is None:
+            artifact = joblib.load(MODEL_DIR / f"baseline_{target.lower()}.joblib")
+        features = pd.DataFrame({
+            "year": periods.year,
+            "month": periods.month,
+            "week": periods.isocalendar().week.astype(int),
+        })
+        predictions[target.lower()] = [float(value) for value in artifact["model"].predict(features[artifact["features"]])]
+
+    return {
+        "StockCode": str(stock_code),
+        "periods": [period.date().isoformat() for period in periods],
+        "units": predictions["units"],
+        "revenue": predictions["revenue"],
+    }
+
+
 def run_product_model(data=None, target="Units", test_fraction=0.2, top_n=None):
     """Train one pooled model on product rows with actual per-product lags."""
     data = load_weekly_data() if data is None else data.copy()

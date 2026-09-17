@@ -3,8 +3,6 @@
 from pathlib import Path
 
 import pandas as pd
-from mlxtend.frequent_patterns import apriori, association_rules
-from mlxtend.preprocessing import TransactionEncoder
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -27,6 +25,9 @@ def build_baskets(data=None):
 
 def mine_association_rules(data=None, min_support=0.01, min_confidence=0.2, top_n=100):
     """Mine and save Apriori rules with support, confidence, and lift."""
+    from mlxtend.frequent_patterns import apriori, association_rules
+    from mlxtend.preprocessing import TransactionEncoder
+
     baskets = build_baskets(data)
     encoder = TransactionEncoder()
     basket_matrix = pd.DataFrame.sparse.from_spmatrix(
@@ -44,6 +45,13 @@ def mine_association_rules(data=None, min_support=0.01, min_confidence=0.2, top_
         rules["consequents"] = rules["consequents"].map(lambda values: ", ".join(sorted(values)))
     rules.to_csv(OUTPUT_PATH, index=False)
     return rules
+
+
+def recommend(stock_code, rules=None, top_n=5):
+    """Return the highest-ranked associated products for one stock code."""
+    rules = pd.read_csv(OUTPUT_PATH) if rules is None else rules
+    matches = rules[rules["antecedents"].astype(str).str.split(", ").apply(lambda values: str(stock_code) in values)]
+    return matches.sort_values(["lift", "confidence"], ascending=False).head(top_n)["consequents"].tolist()
 
 
 if __name__ == "__main__":

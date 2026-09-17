@@ -168,9 +168,9 @@ def train_peak_hour_classifier(data=None):
     }
 
 
-def predict_busy_hour(day_of_week, month, hour=12):
+def predict_busy_hour(day_of_week, month, hour=12, artifact=None):
     """Predict busy vs quiet for a specific day, month, and hour using the tuned threshold."""
-    artifact = joblib.load(MODEL_PATH)
+    artifact = joblib.load(MODEL_PATH) if artifact is None else artifact
     model = artifact["model"]
     sample = pd.DataFrame({
         "Hour": [hour],

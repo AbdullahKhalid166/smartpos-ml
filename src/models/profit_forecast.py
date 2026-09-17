@@ -125,9 +125,9 @@ def train_profit_model(data=None, target="EstimatedProfit", test_fraction=0.2):
     }
 
 
-def predict_profit(new_data):
+def predict_profit(new_data, artifact=None):
     """Predict profit using the saved model."""
-    artifact = joblib.load(MODEL_PATH)
+    artifact = joblib.load(MODEL_PATH) if artifact is None else artifact
     model = artifact["model"]
     features = pd.DataFrame({
         "year": new_data["Period"].dt.year,
